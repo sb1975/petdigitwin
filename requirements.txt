@@ -1,0 +1,24 @@
+# PetDigiTwin Requirements
+# Python 3.11+
+
+# Google Generative AI
+google-genai>=0.1.0
+# Optional Gemini Enterprise Agent Platform SDK path (Vertex AI)
+google-cloud-aiplatform>=1.74.0
+
+# MongoDB
+pymongo>=4.6.0
+
+# Flask API
+flask>=3.0.0
+gunicorn>=21.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Arize Phoenix observability (Phase 3)
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp>=1.25.0
+openinference-instrumentation-google-genai>=0.1.0
+openinference-instrumentation-vertexai>=0.1.0

@@ -2,6 +2,69 @@
 
 A Google Gemini-powered agent that provides one-stop pet health solutions: daily health monitoring, nutrition tracking, natural recovery suggestions, proactive checkup alerts, and pet sitter matching for vacation planning.
 
+## Phase 1 Compliance Note
+
+PetDigiTwin is implemented using the **Developer SDK path** from the allowed Phase 1 options.
+
+Selected track:
+- Gemini Enterprise Agent Platform SDK for Python (custom agent implementation)
+
+Why this satisfies Phase 1:
+- Custom agent logic implemented in `src/agent.py`
+- Tool calling architecture implemented in `src/tools.py`
+- SDK dependencies declared in `requirements.txt` (`google-genai`, `google-cloud-aiplatform`)
+- Environment configuration supports both direct Gemini API and Vertex SDK mode (`USE_VERTEX_SDK` in `.env.example`)
+
+Scope note:
+- Agent Builder and Agent Starter Pack are valid alternatives, but not required when one approved path is selected.
+
+## Phase 2 Compliance Note
+
+PetDigiTwin satisfies Phase 2 using the **SDK implementation path** for both action and grounding.
+
+Core Action Mechanisms (Tool Use):
+- Agent actions are implemented as callable tools in `src/tools.py`
+- Tool-backed endpoints are exposed in `app.py`:
+  - `GET /api/food-recommendations`
+  - `GET /api/health-knowledge`
+  - `GET /api/checkup-prediction`
+  - `GET /api/find-volunteers`
+  - `POST /api/query` (agent orchestration)
+
+Knowledge and Grounding:
+- Grounding source is MongoDB Atlas collections (`pets`, `volunteers`, `pet_foods`, `vet_knowledge`)
+- The agent combines retrieved tool outputs with Gemini reasoning before response generation
+
+Program interpretation note:
+- If your evaluator requires strictly managed Agent Builder resources, the equivalent mapping is:
+  - Agent Builder Extensions  <->  SDK tools in `src/tools.py`
+  - Agent Builder Data Stores <-> MongoDB-backed grounding collections
+
+## Phase 3 Compliance Note (Arize)
+
+PetDigiTwin now implements Arize track requirements for observability and self-introspection.
+
+Implemented now:
+- OpenInference + OpenTelemetry tracing bootstrap in `src/observability.py`
+- Auto-instrumentation for Gemini SDK and Vertex SDK (when packages are available)
+- Phoenix export configured via environment variables:
+  - `PHOENIX_API_KEY`
+  - `PHOENIX_COLLECTOR_ENDPOINT`
+  - `ENABLE_ARIZE_TRACING`
+  - `OTEL_SERVICE_NAME`
+- Runtime introspection endpoints in `app.py`:
+  - `GET /api/observability/status`
+  - `POST /api/observability/feedback`
+  - `GET /api/observability/self-improvement-report`
+- Self-improvement loop data capture:
+  - query telemetry persisted in `agent_runs`
+  - human/judge feedback persisted in `agent_feedback`
+  - actionable recommendations generated from error rate, latency, and rating trends
+
+Phoenix MCP server (for runtime introspection tooling):
+- Run with `npx @arizeai/phoenix-mcp`
+- Connect it in your MCP client config (for example Gemini CLI settings) using your Phoenix credentials
+
 ## ✨ Features
 
 - **Health Monitoring** — Daily pet health tracking with anomaly detection
@@ -63,26 +126,59 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
 ## 📋 Architecture
 
+Standalone architecture doc: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+```mermaid
+flowchart TD
+  U[Pet Owner / Web UI] --> A[Flask App API\napp.py]
+  A --> Q[POST /api/query]
+  A --> O1[GET /api/observability/status]
+  A --> O2[POST /api/observability/feedback]
+  A --> O3[GET /api/observability/self-improvement-report]
+
+  subgraph ACT[Phase 2 - Core Action Mechanisms]
+    Q --> G[PetDigiTwin Agent\nsrc/agent.py]
+    G --> T1[get_pet_health_summary]
+    G --> T2[find_suitable_food]
+    G --> T3[search_health_knowledge]
+    G --> T4[predict_checkup_need]
+    G --> T5[find_volunteers_for_pet]
+  end
+
+  subgraph GRD[Phase 2 - Knowledge and Grounding]
+    M[(MongoDB Atlas\npets, volunteers, pet_foods, vet_knowledge)]
+  end
+
+  T1 --> M
+  T2 --> M
+  T3 --> M
+  T4 --> M
+  T5 --> M
+
+  subgraph OBS[Phase 3 - Arize Observability]
+    OTEL[OpenTelemetry + OpenInference\nsrc/observability.py]
+    PHX[Arize Phoenix\ntraces, prompts, datasets, experiments]
+    MCP[Phoenix MCP Server\nself-introspection tools]
+    O2 --> FB[(MongoDB: agent_feedback)]
+    Q --> RUN[(MongoDB: agent_runs)]
+    OTEL --> PHX
+    MCP --> PHX
+  end
+
+  G --> LLM[Gemini Model\nDirect API or Vertex SDK]
+  G --> OTEL
+  LLM --> G
+  G --> A
+  A --> U
 ```
-User Query
-    ↓
-Gemini Agent (Google Gemini 2.0 Flash)
-    ↓ (calls tools)
-MCP Tools:
-  ├─ search_health_knowledge (RAG over vet docs)
-  ├─ find_suitable_food (nutrition search)
-  ├─ predict_checkup_need (health proactive)
-  ├─ find_volunteers_for_pet (pet sitter matching)
-  └─ get_pet_health_summary (profile overview)
-    ↓
-MongoDB Atlas (data store)
-    ├─ Pets
-    ├─ Volunteers
-    ├─ Pet Foods
-    └─ Vet Knowledge Base
-    ↓
-Response to User
-```
+
+Data flow summary:
+- User actions from the SPA call Flask endpoints.
+- The agent executes tool actions (Phase 2 action mechanism) to retrieve live context.
+- MongoDB collections provide grounded, queryable source-of-truth data (Phase 2 grounding).
+- OpenTelemetry/OpenInference spans are exported to Phoenix for end-to-end trace visibility.
+- Feedback and run telemetry power a self-improvement report for iterative quality tuning.
+- Final recommendations are returned as API responses and rendered in the UI.
 
 ---
 
@@ -142,7 +238,7 @@ petdigitwin/
 
 ### Health Check
 ```bash
-GET /
+GET /health
 ```
 
 ### Agent Query
@@ -164,6 +260,9 @@ GET /api/pets/{id}            # Get pet details
 GET /api/volunteers           # List volunteers
 GET /api/foods                # List foods
 GET /api/knowledge            # List vet knowledge
+GET /api/observability/status
+POST /api/observability/feedback
+GET /api/observability/self-improvement-report
 ```
 
 ---
