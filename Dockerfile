@@ -7,6 +7,8 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    lsof \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -24,6 +26,9 @@ EXPOSE 8080
 # Set environment variables
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+ENV CONTAINER=true
 
 # Run the application
-CMD exec gunicorn --bind :$PORT --workers 4 --timeout 120 app:app
+# Make start script executable and run it when the container starts
+RUN chmod +x ./start.sh
+CMD ["./start.sh"]

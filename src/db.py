@@ -2,66 +2,123 @@
 MongoDB setup and schema initialization for PetDigiTwin
 """
 import os
-from pymongo import MongoClient
-from pymongo.errors import OperationFailure
-from pymongo.errors import CollectionInvalid
 from datetime import datetime
+
+from pymongo import MongoClient
+from pymongo.errors import CollectionInvalid, OperationFailure, ServerSelectionTimeoutError
 
 class PetDigiTwinDB:
     def __init__(self):
-        self.uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/petdigitwin")
-        self.client = MongoClient(self.uri)
-        self.db = self.client.petdigitwin
-    
+        self.primary_uri = os.getenv("MONGODB_URI", "").strip()
+        self.local_uri = "mongodb://localhost:27017/petdigitwin"
+        self.uri = self.primary_uri or self.local_uri
+        self.client = None
+        self.db = None
+        self.connected_to = None
+        self.connection_error = None
+        self._connect()
+
+    def _connect(self):
+        """Try the configured MongoDB URI, then fall back to local MongoDB or in-memory storage."""
+        if self.uri.startswith("mongodb+srv://"):
+            client_kwargs = {"serverSelectionTimeoutMS": 5000}
+            try:
+                import certifi
+                client_kwargs["tlsCAFile"] = certifi.where()
+            except ImportError:
+                pass
+        else:
+            client_kwargs = {"serverSelectionTimeoutMS": 5000}
+
+        try:
+            self.client = MongoClient(self.uri, **client_kwargs)
+            self.db = self.client.petdigitwin
+            self.client.admin.command("ping")
+            self.connected_to = self.uri
+        except Exception as exc:
+            self.connection_error = str(exc)
+            if self.uri != self.local_uri:
+                try:
+                    fallback_kwargs = {"serverSelectionTimeoutMS": 3000}
+                    self.client = MongoClient(self.local_uri, **fallback_kwargs)
+                    self.db = self.client.petdigitwin
+                    self.client.admin.command("ping")
+                    self.uri = self.local_uri
+                    self.connected_to = self.uri
+                    print(f"⚠️  MongoDB Atlas connection failed, using local MongoDB fallback: {self.local_uri}")
+                    return
+                except Exception as local_exc:
+                    self.connection_error = str(local_exc)
+
+            try:
+                import mongomock
+                self.client = mongomock.MongoClient()
+                self.db = self.client.petdigitwin
+                self.uri = "mongomock://in-memory"
+                self.connected_to = self.uri
+                print("⚠️  MongoDB unavailable; using mongomock in-memory fallback for local development.")
+            except ImportError as import_exc:
+                msg = (
+                    f"MongoDB connection failed for {self.uri}. "
+                    f"Local fallback ({self.local_uri}) also failed. "
+                    f"Install local MongoDB or add 'mongomock' for offline fallback. "
+                    f"Last error: {self.connection_error}"
+                )
+                raise RuntimeError(msg) from import_exc
+
     def initialize_collections(self):
         """Create collections and indexes"""
-        
+        if self.db is None:
+            raise RuntimeError(f"Database unavailable: {self.connection_error}")
+
         # 1. Pets collection
         try:
             self.db.create_collection("pets")
         except (OperationFailure, CollectionInvalid):
             pass
-        
+
         self.db.pets.create_index([("owner_id", 1)])
         self.db.pets.create_index([("breed", 1)])
-        
+
         # 2. Volunteers collection
         try:
             self.db.create_collection("volunteers")
         except (OperationFailure, CollectionInvalid):
             pass
-        
+
         self.db.volunteers.create_index([("location", "2dsphere")])
         self.db.volunteers.create_index([("experience", 1)])
-        
+
         # 3. Pet foods collection
         try:
             self.db.create_collection("pet_foods")
         except (OperationFailure, CollectionInvalid):
             pass
-        
+
         self.db.pet_foods.create_index([("suitable_for", 1)])
         self.db.pet_foods.create_index([("breed_specific", 1)])
-        
+
         # 4. Vet knowledge base
         try:
             self.db.create_collection("vet_knowledge")
         except (OperationFailure, CollectionInvalid):
             pass
-        
+
         self.db.vet_knowledge.create_index([("condition", 1)])
-        
-        print("✅ MongoDB collections initialized")
-    
+
+        print(f"✅ MongoDB collections initialized ({self.connected_to})")
+
     def load_sample_data(self):
         """Load hardcoded sample data"""
-        
+        if self.db is None:
+            raise RuntimeError(f"Database unavailable: {self.connection_error}")
+
         # Clear existing data
         self.db.pets.delete_many({})
         self.db.volunteers.delete_many({})
         self.db.pet_foods.delete_many({})
         self.db.vet_knowledge.delete_many({})
-        
+
         # 1. Sample Pets
         pets = [
             {

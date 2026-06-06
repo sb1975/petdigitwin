@@ -24,24 +24,27 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 # ── Virtual environment ───────────────────────────────────────────────────────
-if [[ ! -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$SCRIPT_DIR/.venv"
-fi
-source "$SCRIPT_DIR/.venv/bin/activate"
+if [[ "${CONTAINER:-false}" != "true" ]]; then
+    if [[ ! -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
+        echo "Creating virtual environment..."
+        python3 -m venv "$SCRIPT_DIR/.venv"
+    fi
+    source "$SCRIPT_DIR/.venv/bin/activate"
 
-# ── Dependencies ─────────────────────────────────────────────────────────────
-echo "Checking dependencies..."
-pip install -r requirements.txt -q
+    # ── Dependencies ─────────────────────────────────────────────────────────
+    echo "Checking dependencies..."
+    pip install -r requirements.txt -q
+else
+    echo "Container mode detected; using system Python environment."
+fi
 
 # ── .env sanity check ────────────────────────────────────────────────────────
-if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
-    echo "ERROR: .env file not found. Copy .env.example and fill in your credentials."
-    exit 1
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    echo "Loading .env file..."
+    set -a; source "$SCRIPT_DIR/.env"; set +a
+else
+    echo "No .env file found. Using environment variables instead."
 fi
-
-# Load env to validate required keys
-set -a; source "$SCRIPT_DIR/.env"; set +a
 
 if [[ -z "$MONGODB_URI" ]]; then
     echo "ERROR: MONGODB_URI is not set in .env"
@@ -66,8 +69,14 @@ if [[ -n "$CONFLICT_PID" ]]; then
     fi
 fi
 
-# ── Start app in background ────────────────────────────────────────────────────
+# ── Start app ─────────────────────────────────────────────────────────────────
 echo "Starting PetDigiTwin on port $PORT..."
+
+if [[ "${CONTAINER:-false}" == "true" ]]; then
+    echo "Running in container foreground mode. Logs will stream to stdout."
+    exec python app.py
+fi
+
 USE_VERTEX_SDK="${USE_VERTEX_SDK:-false}" \
     nohup python app.py > "$LOG_FILE" 2>&1 &
 APP_PID=$!

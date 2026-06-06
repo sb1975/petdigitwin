@@ -122,6 +122,28 @@ gcloud run deploy petdigitwin \
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
+## 🧰 Troubleshooting
+
+If the app starts but the web UI shows no data or MongoDB queries fail, the most common issue is MongoDB Atlas network access.
+
+1. Find the current public IP of the server:
+
+```bash
+curl -s https://api.ipify.org
+```
+
+2. Add that IP to MongoDB Atlas Network Access as a CIDR entry, for example:
+
+```text
+172.182.200.133/32
+```
+
+3. If you are running locally or in cloud infrastructure, use the correct outbound IP for that environment. If the IP changes frequently, consider using a VPC peering or a broader Atlas access list for testing.
+
+4. Confirm `.env` contains the right `MONGODB_URI` and `GOOGLE_API_KEY` values.
+
+If you still see no data, check container logs or Flask output for connection / authentication errors.
+
 ---
 
 ## 📋 Architecture
@@ -306,6 +328,11 @@ These are in the **Path 1 skip list**:
 ---
 
 ## 🔧 Troubleshooting
+
+### Check the Public IP
+```bash
+curl -s https://api.ipify.org
+```
 
 ### MongoDB Connection Error
 ```bash
