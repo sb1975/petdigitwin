@@ -1,0 +1,5 @@
+# Continuous Deployment has been moved to Google Cloud Build Native Triggers.
+# GitHub Actions is disabled to avoid duplicate deployments.
+# To trigger a deploy, push a tag matching MVP* (e.g., MVP5.0).
+on:
+  workflow_dispatch:

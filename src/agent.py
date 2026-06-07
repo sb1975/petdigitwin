@@ -5,6 +5,7 @@ Main orchestrator that runs the agent loop with tool calling
 import json
 import os
 from google import genai
+from google.genai import types
 import google.auth
 from opentelemetry import trace
 from src.tools import PetDigiTwinTools, PETDIGITWIN_TOOLS
@@ -55,13 +56,26 @@ class PetDigiTwinAgent:
                 )
             vertexai.init(project=self.gcp_project, location=self.gcp_location)
             self.vertex_ready = True
+
+        self.safety_settings = [
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_MEDIUM_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_MEDIUM_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_MEDIUM_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_MEDIUM_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="BLOCK_MEDIUM_AND_ABOVE"),
+        ]
         self.system_instruction = """You are PetDigiTwin, an intelligent pet health advisor.
 Your role is to:
 1. Monitor and track pet health status
 2. Provide personalized nutrition recommendations
-3. Suggest natural recovery methods for common pet ailments
+3. Suggest natural recovery methods and supportive care for common, non-emergency pet ailments
 4. Proactively recommend veterinary checkups when needed
 5. Help find pet sitters/volunteers for vacation planning
+
+# SAFETY & MEDICAL GUARDRAILS
+- You are NOT a veterinarian. Your advice is for informational purposes only.
+- If a user describes a life-threatening emergency (e.g., severe bleeding, poisoning, difficulty breathing, seizures), immediately tell them to stop typing and go to an emergency vet.
+- Never provide specific dosages for prescription medications.
 
 Always prioritize pet health and safety. Be friendly and supportive with pet owners.
 When you don't have information, be honest about it and recommend consulting a veterinarian."""
@@ -73,12 +87,20 @@ When you don't have information, be honest about it and recommend consulting a v
             try:
                 if self.vertex_ready:
                     model = VertexGenerativeModel(model_name)
-                    response = model.generate_content(prompt)
+                    # Vertex AI SDK handles safety settings as a list of dictionaries
+                    response = model.generate_content(
+                        prompt,
+                        safety_settings=[
+                            {"category": s.category, "threshold": s.threshold} 
+                            for s in self.safety_settings
+                        ] if self.safety_settings else None
+                    )
                     text = getattr(response, "text", None)
                 else:
                     response = self.client.models.generate_content(
                         model=model_name,
                         contents=prompt,
+                        config=types.GenerateContentConfig(safety_settings=self.safety_settings)
                     )
                     text = response.text
 

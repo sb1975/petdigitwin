@@ -122,6 +122,56 @@ gcloud run deploy petdigitwin \
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
+### Continuous Deployment (Google Cloud Native)
+
+To enable automatic redeploys whenever you push a new tag starting with `MVP` (e.g., `MVP5.0`):
+
+**1. Connect Repository (One-time UI setup):**
+Go to the Cloud Build Repositories page and connect your repository `sb1975/petdigitwin`.
+
+**2. Grant IAM Permissions:**
+The Cloud Build service account needs permission to access secrets AND manage Cloud Run. Run this in your terminal:
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+PROJECT_ID=$(gcloud config get-value project)
+
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+    --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+    --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
+```
+
+**3. Create Tag Trigger:**
+Run these commands to find your repository path and create a regional trigger (2nd Gen):
+```bash
+# 1. Get your connection name (required for 2nd Gen repositories)
+CONNECTION_NAME=$(gcloud builds connections list --region=us-central1 --format="value(name)" --limit=1)
+
+# 2. Get your repository resource path
+REPO_PATH=$(gcloud builds repositories list --region=us-central1 --connection="$CONNECTION_NAME" --filter="name:petdigitwin" --format="value(name)")
+
+# 3. Create the trigger using the path
+gcloud builds triggers create github \
+    --name="redeploy-on-mvp-tag" \
+    --repository="$REPO_PATH" \
+    --tag-pattern="^MVP.*" \
+    --build-config="cloudbuild.yaml" \
+    --region="us-central1"
+```
+
+**4. Deploy:** Now, pushing a new tag will trigger the build and deploy automatically:
+```bash
+git tag MVP5.0
+git push origin MVP5.0
+```
+
 ## 🧰 Troubleshooting
 
 If the app starts but the web UI shows no data or MongoDB queries fail, the most common issue is MongoDB Atlas network access.
