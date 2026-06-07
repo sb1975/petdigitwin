@@ -410,7 +410,7 @@ gcloud run deploy petdigitwin --source . --platform managed --region us-central1
 
 **Day 1 stuck?** → Check MongoDB connection string, verify credentials
 **Day 2 stuck?** → Start with simpler query, test each tool individually
-**Day 3 stuck?** → Try `gcloud run logs read petdigitwin` to see errors
+**Day 3 stuck?** → Try `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=petdigitwin" --limit 50` to see errors
 **Day 4 stuck?** → Record simpler demo, focus on one feature
 
 ---

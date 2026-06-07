@@ -168,7 +168,7 @@ gcloud run deploy petdigitwin \
   --region us-central1 \
   --memory 1Gi \
   --cpu 1 \
-  --set-env-vars MONGODB_URI="your-mongodb-uri",GOOGLE_API_KEY="your-api-key" \
+  --set-secrets MONGODB_URI=MONGODB_URI:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest \
   --allow-unauthenticated
 
 # Option B: Push to Artifact Registry first
@@ -347,5 +347,5 @@ For issues:
 1. Check `.env` variables
 2. Verify MongoDB connection
 3. Test with simpler queries
-4. Check Cloud Run logs: `gcloud run logs read petdigitwin`
+4. Check Cloud Run logs: `gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=petdigitwin" --limit 50`
 5. Review error messages in stderr

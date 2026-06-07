@@ -2,6 +2,7 @@
 MongoDB setup and schema initialization for PetDigiTwin
 """
 import os
+import time
 from datetime import datetime
 
 from pymongo import MongoClient
@@ -30,12 +31,29 @@ class PetDigiTwinDB:
         else:
             client_kwargs = {"serverSelectionTimeoutMS": 5000}
 
-        try:
-            self.client = MongoClient(self.uri, **client_kwargs)
-            self.db = self.client.petdigitwin
-            self.client.admin.command("ping")
-            self.connected_to = self.uri
-        except Exception as exc:
+        # Add a retry loop for Cloud Run to wait for Atlas firewall propagation
+        max_retries = 6 if os.getenv("K_SERVICE") else 1
+        last_exc = None
+        
+        for i in range(max_retries):
+            try:
+                self.client = MongoClient(self.uri, **client_kwargs)
+                self.db = self.client.petdigitwin
+                self.client.admin.command("ping")
+                self.connected_to = self.uri
+                return # Connection successful
+            except Exception as exc:
+                last_exc = exc
+                if os.getenv("K_SERVICE") and i < max_retries - 1:
+                    print(f"⏳ Waiting for Atlas IP propagation (attempt {i+1}/{max_retries})...")
+                    time.sleep(10)
+                    continue
+
+            # Prevent silent fallback to mongomock in production (Cloud Run)
+            if os.getenv("K_SERVICE"):
+                print(f"❌ Production MongoDB connection failed after retries: {last_exc}")
+                raise RuntimeError(f"Failed to connect to database at {self.uri}. Check credentials and Atlas IP whitelisting.") from last_exc
+
             self.connection_error = str(exc)
             if self.uri != self.local_uri:
                 try:

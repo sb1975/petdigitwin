@@ -12,6 +12,7 @@ from opentelemetry import trace
 from src.agent import PetDigiTwinAgent
 from src.db import PetDigiTwinDB
 from src.observability import setup_observability, get_observability_status
+from src.setup_atlas_access import whitelist_ips
 from src.ui import MAIN_PAGE
 
 load_dotenv()
@@ -24,17 +25,30 @@ app = Flask(__name__)
 agent = None
 db = None
 
-@app.before_request
-def init():
+def startup_initialization():
+    """Ensures the environment is ready (IP whitelisting, DB connection) at container spin-up."""
     global agent, db
-    if agent is None:
-        agent = PetDigiTwinAgent()
-    if db is None:
-        db = PetDigiTwinDB()
-        db.initialize_collections()
-        # Load sample data if collections are empty
-        if db.db.pets.count_documents({}) == 0:
-            db.load_sample_data()
+    
+    # 1. Whitelist the container's outbound IP in MongoDB Atlas
+    # This happens once when the container process starts.
+    if os.getenv("K_SERVICE"):
+        try:
+            print("🌐 Cloud Run spin-up detected. Whitelisting container IP in Atlas...")
+            whitelist_ips()
+        except Exception as e:
+            print(f"⚠️  Atlas auto-whitelisting failed: {e}")
+
+    # 2. Initialize Agent and DB
+    # The DB connection includes a retry loop to wait for Atlas firewall propagation.
+    agent = PetDigiTwinAgent()
+    db = PetDigiTwinDB()
+    db.initialize_collections()
+    
+    if db.db.pets.count_documents({}) == 0:
+        db.load_sample_data()
+
+# Trigger initialization immediately on container start
+startup_initialization()
 
 @app.route("/", methods=["GET"])
 def main_ui():

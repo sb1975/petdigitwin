@@ -5,6 +5,7 @@ Main orchestrator that runs the agent loop with tool calling
 import json
 import os
 from google import genai
+import google.auth
 from opentelemetry import trace
 from src.tools import PetDigiTwinTools, PETDIGITWIN_TOOLS
 from dotenv import load_dotenv
@@ -25,7 +26,13 @@ class PetDigiTwinAgent:
         self.tools = PetDigiTwinTools()
         self.client = genai.Client(api_key=self.api_key)
         self.use_vertex_sdk = os.getenv("USE_VERTEX_SDK", "false").lower() == "true"
-        self.gcp_project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+
+        # Detect project ID automatically for Vertex AI
+        try:
+            _, self.gcp_project = google.auth.default()
+        except Exception:
+            self.gcp_project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+
         self.gcp_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
         self.model_name = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
         self.model_fallbacks = [

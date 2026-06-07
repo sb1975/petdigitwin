@@ -126,19 +126,31 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
 If the app starts but the web UI shows no data or MongoDB queries fail, the most common issue is MongoDB Atlas network access.
 
-1. Find the current public IP of the server:
+### Option 1: Automated Container IP Whitelisting (Seamless Mode)
+The application is configured to automatically detect its own public IP and add it to the MongoDB Atlas access list on startup. This is ideal for Cloud Run's dynamic IPs.
 
-```bash
-curl -s https://api.ipify.org
-```
+1. Generate a **Programmatic API Key** in Atlas (Project Settings -> API Keys). Ensure it has "Project Owner" permissions.
+2. Add the credentials to your `.env` (or Secret Manager) so the container can use them:
+   ```bash
+   ATLAS_PUBLIC_KEY=your_public_key
+   ATLAS_PRIVATE_KEY=your_private_key
+   ATLAS_PROJECT_ID=your_project_id
+   ```
+3. The app will now handle whitelisting automatically during the first request or health check. Note that Atlas propagation can take up to 60 seconds.
 
-2. Add that IP to MongoDB Atlas Network Access as a CIDR entry, for example:
+### Option 2: Static Outbound IP (Production Mode)
+To provide a single static IP for whitelisting, configure a VPC Connector and Cloud NAT:
 
-```text
-172.182.200.133/32
-```
-
-3. If you are running locally or in cloud infrastructure, use the correct outbound IP for that environment. If the IP changes frequently, consider using a VPC peering or a broader Atlas access list for testing.
+1. Create a static IP: `gcloud compute addresses create pet-static-ip --region=us-central1`
+2. Get the IP value: `gcloud compute addresses describe pet-static-ip --region=us-central1 --format='value(address)'`
+3. Create a Cloud Router: `gcloud compute routers create pet-router --network=default --region=us-central1`
+4. Create Cloud NAT: `gcloud compute routers nats create pet-nat --router=pet-router --region=us-central1 --nat-all-subnet-ip-ranges --nat-external-ip-pool=pet-static-ip`
+5. Create VPC Connector: `gcloud compute networks vpc-access connectors create pet-conn --network=default --region=us-central1 --range=10.8.0.0/28`
+6. Deploy Cloud Run:
+   ```bash
+   gcloud run deploy petdigitwin --source . --vpc-connector=pet-conn --vpc-egress=all-traffic ...
+   ```
+7. Whitelist the static IP from step 2 in the Atlas dashboard (or use the script in Option 1 passing the IP as an argument).
 
 4. Confirm `.env` contains the right `MONGODB_URI` and `GOOGLE_API_KEY` values.
 
